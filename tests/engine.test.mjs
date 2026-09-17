@@ -57,3 +57,39 @@ console.log('PASS: local clocks, shared ancestry, exact scoring, finite games, a
  assert(trace(x,0,4,0).flips.some(c=>c.t===2));const changed=play(x,0,0,4);assert.equal(changed.worlds[0].waits[2][0],1);assert.equal(x.worlds[0].waits[2][0],-1);
  console.log('PASS: waiting history persists, contains no holes, supports time captures and adds no score.');
 }
+
+// Regression: historical legal placements must not lock a blocked present.
+{
+ let s=initial(6),w=s.worlds[0];s.t=2;w.head=2;
+ w.b=Array(36).fill(1);w.h[1]=w.b.slice();w.h[2]=w.b;
+ const before=structuredClone(s),sc=score(s);
+ assert(moves(s).some(m=>m.travel));
+ const q=pass(s);assert.equal(q.t,3);assert.equal(q.p,-1);
+ assert.equal(q.placed,s.placed);assert.deepEqual(score(q),sc);
+ assert.deepEqual(s,before);assert(!q.ended);assert.equal(q.passes,0);
+ assert(q.worlds[0].waits[3]);
+ const r=search(s,{budget:10000,width:1,maxDepth:2});
+ assert(r.move);assert.equal(r.depth,2);
+ // Search evaluates both the admitted placement and the pass even at width 1.
+ const first=search(s,{budget:10000,width:1,maxDepth:1});
+ assert.equal(first.expanded,Math.min(5,moves(s).length)+1);
+}
+// A partial pass leaves playable present worlds intact and cannot end a game.
+{
+ const s=initial(6),b=s.worlds[0].b.slice();
+ s.worlds[0].b.fill(1);
+ s.worlds.push({id:1,parent:null,origin:0,start:0,head:0,b,h:{0:b},waits:{}});
+ s.passes=1;
+ const q=pass(s);assert.equal(q.worlds[0].head,1);assert.equal(q.worlds[1].head,0);
+ assert.equal(q.t,0);assert.equal(q.p,1);assert.equal(q.passes,0);assert(!q.ended);
+ assert.throws(()=>pass(q));
+ assert(moves(q).some(m=>m.l===1&&m.t===0));
+}
+// Both human and CPU use the same explicit pass action on a fully blocked board.
+{
+ const s=initial(6);s.worlds[0].b.fill(1);
+ const r=search(s,{budget:10000,maxDepth:3});
+ assert(r.move?.pass);assert.equal(r.depth,3);assert(pass(pass(s)).ended);
+ assert.throws(()=>pass(initial(6)));
+}
+console.log('PASS: blocked-present pass with playable history, partial-world pass, no false end, CPU pass action.');

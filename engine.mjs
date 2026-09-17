@@ -20,5 +20,19 @@ export function play(s,l,i,t=s.t){if(s.ended||s.placed>=s.limit)throw Error('対
 for(let c of found.flips){if(c.l===old.l&&c.t===old.t)b[c.i]=q.p;else{let other=locate(q,c.l,c.t);other.b[c.i]=q.p;}}
 let departure=null;if(travel){departure=source.head===s.t?source:q.worlds.find(w=>w.head===s.t);if(!departure)throw Error('跳躍元の現在盤面がありません');advanceWait(departure);q.branches.push(branchKey(s,l,t,i));q.worlds.push({id:newL,parent:l,origin:t,start:t+1,head:t+1,b,h:{[t+1]:b},waits:{}});}else{source.head=t+1;source.b=b;source.h[t+1]=b;}
 q.log.unshift({t,p:q.p,l:newL,source:l,departure:departure?.id??null,i,count:found.flips.length,cross:found.flips.some(c=>c.cross),travel,number:q.placed+1});q.placed++;q.passes=0;if(q.placed>=q.limit)q.ended=true;clock(q);return q;}
-export function pass(s){if(s.ended||hasMove(s))throw Error('過去への着手を含め、合法手があります');let q=structuredClone(s),p=q.p;q.log.unshift({t:q.t,p,pass:true,number:q.placed});for(let w of q.worlds)if(w.head===q.t)advanceWait(w);q.passes++;clock(q);if(q.passes>=2)q.ended=true;return q;}
+// Only blocked present boards pass; historical moves never prevent a pass.
+export function passable(s){if(s.ended)return [];return s.worlds.filter(w=>w.head===s.t&&!w.b.some((v,i)=>!v&&trace(s,w.id,s.t,i).flips.length)).map(w=>w.id);}
+export function pass(s){
+ const blocked=passable(s);if(!blocked.length)throw Error('パスできる現在盤面がありません');
+ const globallyBlocked=!hasMove(s)&&s.worlds.every(w=>w.head===s.t);
+ let q=structuredClone(s),p=q.p;
+ q.log.unshift({t:q.t,p,pass:true,worlds:blocked,number:q.placed});
+ for(const l of blocked)advanceWait(q.worlds[l]);
+ clock(q);
+ // Partial passes are not consecutive whole-player passes. A playable past
+ // or a world still ahead also prevents premature termination.
+ q.passes=globallyBlocked&&!hasMove(q)?s.passes+1:0;
+ if(q.passes>=2)q.ended=true;
+ return q;
+}
 export function score(s){let a={1:0,'-1':0};for(let w of s.worlds)for(let b of Object.values(w.h))for(let v of b)if(v)a[v]++;return a;}
